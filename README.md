@@ -24,7 +24,7 @@ with it.
 | Part | Status |
 |---|---|
 | Windows popup under **WSL2** (`bin/toast.ps1`) | **Works.** Seen live, and again on 2026-10-07 |
-| Windows popup **with sound** (`sound: true`) | **Fires**: PowerShell reports the toast shown with the reminder audio attached. Nobody has yet confirmed hearing the chime |
+| Windows popup **with sound** (`sound: true`) | **Works.** Toast shown with the reminder audio attached, and the chime confirmed heard on 2026-10-07 |
 | `/cache-watch` and `/cache-watch test` in the **VS Code** extension | **Work** |
 | `/cache-watch` and `/cache-watch test` in a **terminal** session | **Work.** Checked on 2026-10-07 in print mode, both with `claude --plugin-dir` and loaded from `settings.json` |
 | **Windows idle detection** (`bin/idle.ps1`, `GetLastInputInfo`) | **Works.** Checked live on 2026-10-07: reported 4 s and 40 s correctly, and gated the phone |
@@ -32,7 +32,7 @@ with it.
 | Firing log (`~/.cache/cache-watch/fire.log`, `/cache-watch log`) | **Works.** Written live on 2026-10-07, directory created on first use |
 | **Phone push** | **Never confirmed to arrive.** Both gates have been seen to block it (`user_present` live on 2026-10-07; `no_transport` without a bridge). See *The phone leg* |
 | Warning timing (fires once, at `ttlMinutes - warnMinutes`, subagent requests ignored, settings honoured, logged) | **Covered by the test suite** (13 tests, mocked clock, `claude plugin test .`) |
-| Warning timing in a **real** idle session | **Fires, but one real firing looked about 4 minutes early.** Unexplained; now instrumented. See *The timing* |
+| Warning timing in a **real** idle session | **Explained, not yet re-measured.** The early firing was the host's `CLOCK_MONOTONIC` running 8.33% fast, not the mod. See *Known issue: WSL2 clock skew* |
 | **Linux desktop** popup and sound (`notify-send`) | **Untested on a real desktop.** The automated test drives a fake `notify-send`; it has never run against a notification daemon |
 | macOS | **Not supported.** No popup path; `/cache-watch test` reports `desktop: no notifier found` |
 
@@ -130,12 +130,48 @@ Push also needs `"agentPushNotifEnabled": true` in your settings; with it off th
 `config_off` and the mod says so. One trap: setting `CLAUDE_CODE_REMOTE` makes `transport` true
 unconditionally, so the tool reports `pushSent: true` with nothing on the other end. Don't.
 
-## What is missing
+## What is not verified
 
-[TODO.md](TODO.md) is the honest list: what is designed but unbuilt (including re-probing the
-machine instead of dropping the phone push), what has never been observed live, the test cases
-still to write, and what publishing steps are left. The two things that cannot be built at all are
-below.
+The status table above says what has been checked. This is the other half of it, in one place,
+because a young tool that is vague about its gaps is worse than one that names them.
+
+**Never seen happen, on any machine.** These are not believed to be broken; nobody has watched
+them:
+
+- A warning firing in an **interactive** session. Every firing observed so far was triggered by
+  hand with `/cache-watch test`; the scheduled path has only ever run under the test suite's
+  mocked clock. Print mode (`claude -p`) cannot show it either — the process exits long before the
+  timer is due, taking the timer with it.
+- A **phone push arriving**. Both gates have been seen to refuse one, and a successful send has
+  never been confirmed at the phone. See *The phone leg*.
+- A firing **across a machine sleep**. The re-arm guard is written for a timer that returns early,
+  but a suspended host has not been tried.
+- **Several sessions warning at once.** The folder in each title is meant to tell them apart; that
+  has not been watched in anger.
+- A **5-minute cache** (`ttlMinutes: 5`). Unit-tested, never lived with.
+
+**Untested because this machine cannot test it.** Built and run on Ubuntu 24.04 under WSL2, so
+every Linux-desktop path is exercised against a fake command in the test suite and has never met a
+real notification daemon:
+
+- The `notify-send` popup, and whether `--urgency=critical` really stays until dismissed outside
+  GNOME.
+- The Linux sound path (`canberra-gtk-play`, then `paplay`).
+- Linux idle detection (`xprintidle`, else GNOME's Mutter idle monitor over D-Bus).
+- **macOS is not supported at all** — there is no popup path, and `/cache-watch test` says
+  `desktop: no notifier found`.
+
+**Code with no coverage.** One path in the mod is untested and cannot be tested here: the re-arm
+branch that catches a timer returning more than 30 seconds early. A mocked clock fires exactly on
+time, so the test kit cannot produce an early timer; it is written to be plainly correct rather
+than proven, and a skewed host (see *Known issue: WSL2 clock skew*) is the only thing that
+exercises it.
+
+**Known to be incomplete, by choice.** When the warning fires and the machine says you are still
+at the keyboard, the phone leg is dropped rather than deferred. Re-probing the machine a few
+minutes later, and pushing only if you have gone away by then, would be better and is not built.
+
+The two things that cannot be built at all are below.
 
 ## Not possible yet
 
@@ -162,33 +198,51 @@ in `hooks/register.ts` are the two places to change.
 
 ## The timing
 
-In my own use, the warning seemed to arrive with about **14 minutes** left rather than the
-configured 10 — consistently, not randomly. I could not reproduce it from the code or the data:
-
-- `turn.step` fires once per **model request**, so the clock is anchored on the last request of
-  a turn, not on your message. Across 983 turns in my transcripts, the final request of a turn
-  took a median of 2 seconds and at most 1.5 minutes, so "the turn took four minutes" cannot
-  explain a four-minute error.
-- The test suite schedules and fires on a mocked clock, and the arithmetic is exact there.
-
-Two candidates remain, neither confirmed: the host firing a 50-minute timer early, or a warning
-from one of several open sessions being read against the window I happened to be looking at
-(each session has its own cache and its own clock, and warns on its own).
-
-So version 0.2.0 instruments it instead of guessing:
+The clock is anchored on the last model request of the main conversation, and the arithmetic from
+there is exact — the test suite schedules and fires it on a mocked clock. What is *not* exact is
+the host timer the mod waits on: on a machine whose monotonic clock runs at the wrong rate the
+warning lands early or late in real time, by a margin that grows with the wait. That is a host
+problem, described in *Known issue: WSL2 clock skew* below, and the mod does not try to correct
+for it. What it does instead is generic, and absorbs the common cases:
 
 - Every firing appends a line to `~/.cache/cache-watch/fire.log` with the anchor, the time the
   warning was *meant* for, the drift between them, which session and folder it came from, and
   what each channel did. `/cache-watch log` prints the last ten.
-- A timer that comes back **more than 30 seconds early** is re-armed for the rest of its wait,
-  up to three times, and the early return is logged. (This path cannot be exercised by the test
-  suite — a mocked clock fires exactly on time — so it is written to be plainly correct rather
-  than proven.)
+- A timer that comes back **more than 30 seconds early** is re-armed for the rest of its wait, up
+  to three times, and the early return is logged. On a host 8.33% fast — the skew measured while
+  building this — the first 50-minute wait returns 231 s early, the re-arm covers the remainder,
+  and the warning lands within about 20 s of its time.
 - The warning names the minutes that are really left at the moment it fires, not the configured
-  `warnMinutes`, so a late timer tells the truth.
+  `warnMinutes`, so a timer that drifts either way still tells the truth.
 
-If you prefer to be warned earlier, that is a setting, not a bug to live with: `warnMinutes: 15`
-costs you one message and buys a wider margin.
+If you simply prefer a wider margin, that is a setting rather than a bug to live with:
+`warnMinutes: 15` costs you one message.
+
+## Known issue: WSL2 clock skew makes warnings early
+
+Not a bug in this mod, but it changes when your warnings land, so it is worth knowing before you
+file one against the mod.
+
+Under WSL2, a `systemd-timesyncd` left running alongside Hyper-V's own time synchronisation leaves
+the kernel's `tick` wrong, and then `CLOCK_MONOTONIC` — the clock host timers run on — advances at
+the wrong *rate* while `CLOCK_REALTIME` stays correct. Ubuntu 24.04 and earlier enable timesyncd
+by default, against Microsoft's own recommendation for WSL, so the default install is affected.
+It is [open upstream](https://github.com/microsoft/WSL/issues/12583) and unpatched.
+
+The error is a rate, so it scales with the wait: at the 8.33% measured on the machine this was
+built on, a 50-minute timer ends after 46.2 real minutes and the warning arrives with about
+**14 minutes** of cache left instead of 10. The sign is not the same everywhere — the upstream
+report measures 6.9% the other way, firing *late* — which is why the mod does not try to correct
+it. Check your own machine:
+
+```bash
+python3 -c "import time; m=time.clock_gettime(time.CLOCK_MONOTONIC); r=time.clock_gettime(time.CLOCK_MONOTONIC_RAW); print(f'monotonic is {(m/r-1)*100:+.2f}% off')"
+```
+
+Roughly `+0.00%` is healthy. Anything else is the host, and the fix is on the host: disable
+`systemd-timesyncd` and restore the tick with `sudo adjtimex --tick 10000`. Either way the mod's
+re-arm guard absorbs most of it — *The timing* above says what it does, and `/cache-watch log`
+shows what it did.
 
 ## Notifications
 
@@ -204,8 +258,8 @@ Defaults: popup on, phone on, sound off, log on. Every notification names the pr
 the start of your last message, so warnings from parallel sessions can be told apart:
 
 ```
-Claude cache cold in 10 min · recovery
-“check the flash log”. Send a message to keep it warm.
+Claude cache cold in 10 min · api-server
+“rename the config loader”. Send a message to keep it warm.
 ```
 
 Linux packages, if missing (Ubuntu names): `sudo apt install libnotify-bin` for `notify-send`,
@@ -281,6 +335,8 @@ To try it once without changing settings: `claude --plugin-dir /path/to/cache-wa
 ## Limits
 
 - The cache's real state is invisible to mods, so everything here is a clock, not a reading.
+- **A skewed host clock moves the warning.** Host timers use `CLOCK_MONOTONIC`, and under WSL2 that
+  clock commonly runs at the wrong rate; see *Known issue: WSL2 clock skew* above.
 - The phone needs that session's Remote Control bridge to be live, and Claude Code's own presence
   check can still refuse it; see *The phone leg* and *Not possible yet*.
 - After the mod reloads mid-session the clock continues from the last request, but a warning
@@ -297,7 +353,6 @@ To try it once without changing settings: `claude --plugin-dir /path/to/cache-wa
 - `bin/idle.ps1` — how long since you last touched the Windows desktop
 - `tests/cache-watch.test.ts` — `claude plugin test .`
 - `types/index.d.ts` — the session value it keeps (`cache-watch.lastRequestAt`)
-- `TODO.md` — what is missing, untested, or impossible today
 
 ## Checks
 
