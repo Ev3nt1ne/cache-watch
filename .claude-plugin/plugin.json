@@ -26,8 +26,14 @@
     "phone": {
       "type": "boolean",
       "title": "Phone push",
-      "description": "Try a push to the Claude app on your phone (needs Remote Control connected on this machine)",
+      "description": "Try a push to the Claude app on your phone. It only arrives while this session has Remote Control connected (/remote-control)",
       "default": true
+    },
+    "awayMinutes": {
+      "type": "number",
+      "title": "Count me away from the machine after this many minutes",
+      "description": "The phone is only tried when the machine itself says nobody has touched it for this long. Below it, the desktop popup has already reached you",
+      "default": 2
     },
     "sound": {
       "type": "boolean",

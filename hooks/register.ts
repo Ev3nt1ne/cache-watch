@@ -14,6 +14,13 @@ const POWERSHELL = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.ex
 // A Linux desktop's sound, tried in order: libcanberra's event sound, then the file through PulseAudio/PipeWire.
 const LINUX_SOUND =
   'canberra-gtk-play -i message-new-instant 2>/dev/null || paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga'
+// How long the person has been away from the machine itself, in milliseconds: X11's idle time,
+// else GNOME's (Mutter's idle monitor over D-Bus). Prints nothing where neither answers.
+const LINUX_IDLE =
+  'if command -v xprintidle >/dev/null 2>&1; then xprintidle; exit; fi; ' +
+  'if command -v dbus-send >/dev/null 2>&1; then dbus-send --session --print-reply ' +
+  '--dest=org.gnome.Mutter.IdleMonitor /org/gnome/Mutter/IdleMonitor/Core ' +
+  'org.gnome.Mutter.IdleMonitor.GetIdletime 2>/dev/null | grep -oE "[0-9]+$"; fi'
 const MINUTE = 60_000
 // A timer that fires this much before its time is the host's doing, not ours: re-arm instead of warning early.
 const EARLY_MS = 30_000
@@ -28,6 +35,7 @@ type Settings = {
   ttlMinutes: number
   desktop: boolean
   phone: boolean
+  awayMinutes: number
   sound: boolean
   log: boolean
 }
@@ -40,6 +48,7 @@ function settingsFrom(options: PluginOptions): Settings {
     ttlMinutes: num(options.ttlMinutes, 60),
     desktop: bool(options.desktop, true),
     phone: bool(options.phone, true),
+    awayMinutes: num(options.awayMinutes, 2),
     sound: bool(options.sound, false),
     log: bool(options.log, true),
   }
@@ -121,6 +130,42 @@ async function desktopKind($: $): Promise<Desktop> {
   return 'none'
 }
 
+/**
+ * How long since the person last touched this machine — any window, not just this
+ * session — in milliseconds, or null where nothing on the machine will say.
+ *
+ * This is the machine's own idea of the person, and it is a better one than Claude
+ * Code's: Claude Code counts you present while its terminal has focus, or if you typed
+ * into this session in the last minute, so a window left focused and walked away from
+ * reads as present for ever — exactly when a push to the phone would be the only thing
+ * that reaches you.
+ */
+async function idleMs($: $, machine: Desktop): Promise<number | null> {
+  try {
+    if (machine === 'windows') {
+      const script = await $.fs.read(`${$.plugin.root}/bin/idle.ps1`)
+      const r = await $.process.run([POWERSHELL, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '-'], {
+        stdin: script,
+        timeoutMs: 20_000,
+      })
+      const ms = /idle=(\d+)/.exec(r.stdout)?.[1]
+      return ms === undefined ? null : Number(ms)
+    }
+    if (machine === 'linux') {
+      const r = await $.process.run(['sh', '-c', LINUX_IDLE], { timeoutMs: 10_000 })
+      const ms = /(\d+)/.exec(r.stdout)?.[1]
+      return ms === undefined ? null : Number(ms)
+    }
+  } catch {
+    // Nothing on this machine to ask.
+  }
+  return null
+}
+
+function seconds(ms: number) {
+  return ms < 90_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / MINUTE)}min`
+}
+
 async function linuxPopup($: $, s: Settings, title: string, body: string): Promise<string> {
   // Critical urgency: GNOME keeps it on screen until dismissed; other desktops may time it out.
   const r = await $.process.run(['notify-send', '--app-name=Claude Code', '--urgency=critical', title, body], {
@@ -158,10 +203,25 @@ function phoneReport(r: CallResult): string {
   return `phone: not sent (${String(r.text ?? JSON.stringify(push)).slice(0, 100)})`
 }
 
-/** Sends the warning on every channel switched on; returns what each one did. */
-async function notify($: $, s: Settings, title: string, body: string): Promise<string[]> {
+/**
+ * Sends the warning on every channel switched on; returns what each one did and the
+ * machine's idle time, where it could be read.
+ *
+ * `force` sends the push even when you are plainly at the keyboard: what `test` wants,
+ * since a test fired by hand is always fired by someone present.
+ */
+async function notify(
+  $: $,
+  s: Settings,
+  title: string,
+  body: string,
+  force = false,
+): Promise<{ done: string[]; idle: number | null }> {
   const done: string[] = []
-  const kind = s.desktop ? await desktopKind($) : 'none'
+  // Probed whatever the popup setting says, because the phone leg reads the machine's idle time.
+  const machine = await desktopKind($)
+  const kind: Desktop = s.desktop ? machine : 'none'
+  let idle: number | null = null
   if (s.desktop && kind === 'none') done.push('desktop: no notifier found (not WSL, and no notify-send)')
   if (kind === 'linux') {
     try {
@@ -190,19 +250,25 @@ async function notify($: $, s: Settings, title: string, body: string): Promise<s
     }
   }
   if (s.phone) {
-    try {
-      const r = (await $.tool.call({
-        tool: 'PushNotification',
-        message: `${title}: ${body}`.slice(0, 190),
-        status: 'proactive',
-      })) as CallResult
-      done.push(phoneReport(r))
-    } catch (err) {
-      done.push(`phone: failed (${String(err instanceof Error ? err.message : err)})`)
+    idle = await idleMs($, machine)
+    // At the machine: the popup has already reached you, and a push would only be noise.
+    if (!force && idle !== null && idle < s.awayMinutes * MINUTE) {
+      done.push(`phone: not tried (you touched this machine ${seconds(idle)} ago)`)
+    } else {
+      try {
+        const r = (await $.tool.call({
+          tool: 'PushNotification',
+          message: `${title}: ${body}`.slice(0, 190),
+          status: 'proactive',
+        })) as CallResult
+        done.push(phoneReport(r))
+      } catch (err) {
+        done.push(`phone: failed (${String(err instanceof Error ? err.message : err)})`)
+      }
     }
   }
   if (!done.length) done.push('no channel is switched on')
-  return done
+  return { done, idle }
 }
 
 /**
@@ -225,7 +291,7 @@ async function warn($: $, s: Settings, plan: Plan) {
   const left = Math.max(0, Math.round((plan.anchor + s.ttlMinutes * MINUTE - now) / MINUTE))
   const folder = await folderOf($)
   const gist = await gistOf($)
-  const done = await notify(
+  const { done, idle } = await notify(
     $,
     s,
     `Claude cache cold in ${left} min · ${folder}`,
@@ -237,6 +303,7 @@ async function warn($: $, s: Settings, plan: Plan) {
     s,
     `${iso(now)} fire   anchor=${iso(plan.anchor)} planned=${iso(plan.firesAt)} drift=${Math.round(drift / 1000)}s ` +
       `left=${left}min warn=${s.warnMinutes} ttl=${s.ttlMinutes} rearms=${plan.rearms} ` +
+      `idle=${idle === null ? 'unknown' : seconds(idle)} ` +
       `session=${(await $.session.id()).slice(0, 8)} cwd=${folder} | ${done.join(', ')}`,
   )
 }
@@ -268,7 +335,8 @@ function minutes(ms: number) {
 async function status($: $, s: Settings): Promise<string> {
   const anchor = await read($, lastRequestAt)
   const channels = [s.desktop && 'desktop popup', s.phone && 'phone', s.sound && 'sound'].filter(Boolean).join(' + ') || 'none'
-  const conf = `Warns ${s.warnMinutes} min before a ${s.ttlMinutes}-min cache goes cold, via ${channels}.`
+  const gate = s.phone ? ` The phone is only tried when you have been away from this machine for ${s.awayMinutes} min.` : ''
+  const conf = `Warns ${s.warnMinutes} min before a ${s.ttlMinutes}-min cache goes cold, via ${channels}.${gate}`
   if (anchor === null) return `${conf}\nNo request sent yet in this session: nothing to keep warm.`
   const left = anchor + s.ttlMinutes * MINUTE - (await $.clock.now())
   if (left <= 0) return `${conf}\nThe cache is probably cold (last request ${minutes(-left + s.ttlMinutes * MINUTE)} ago).`
@@ -305,19 +373,23 @@ export const register: Register = (on, options) => {
     if (arg === 'test') {
       const folder = await folderOf($)
       const gist = await gistOf($)
-      const done = await notify(
+      // `force`: a test is always fired by someone present, so the gate would always skip it.
+      const { done, idle } = await notify(
         $,
         s,
         `Claude cache: test notification · ${folder}`,
         `${gist ? `“${gist}”. ` : ''}This is how the warning will look.`,
+        true,
       )
       // Logged like a firing, so the log's own plumbing is checked by the same command.
       await appendLog(
         $,
         s,
-        `${iso(await $.clock.now())} test   session=${(await $.session.id()).slice(0, 8)} cwd=${folder} | ${done.join(', ')}`,
+        `${iso(await $.clock.now())} test   idle=${idle === null ? 'unknown' : seconds(idle)} ` +
+          `session=${(await $.session.id()).slice(0, 8)} cwd=${folder} | ${done.join(', ')}`,
       )
-      return { text: `Test sent: ${done.join(', ')}.` }
+      const seen = idle === null ? 'this machine reports no idle time' : `you last touched this machine ${seconds(idle)} ago`
+      return { text: `Test sent: ${done.join(', ')}. (${seen}; a real warning skips the phone under ${s.awayMinutes} min.)` }
     }
     if (arg === 'log') {
       const lines = await readLog($)

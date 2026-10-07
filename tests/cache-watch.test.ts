@@ -22,10 +22,12 @@ type WorldOptions = {
   push?: Push
   /** How long one model request takes, so the end of the request can be told from its start. */
   stepMs?: number
+  /** What the machine answers for "how long since the person last touched me", in ms; null for "it will not say". */
+  idle?: number | null
 }
 
 function world(on: On, options: WorldOptions = {}) {
-  const { platform = 'wsl', push = { pushSent: true }, stepMs = 0 } = options
+  const { platform = 'wsl', push = { pushSent: true }, stepMs = 0, idle = 10 * MINUTE } = options
   const clock = mock.clock(on, { now: START })
   mock.env(on, { HOME: '/home/test' })
   const toasts: Record<string, string>[] = []
@@ -39,11 +41,13 @@ function world(on: On, options: WorldOptions = {}) {
   on('process.run', (_$, e) => {
     const [cmd, , script] = e.argv
     if (cmd === 'sh' && script === 'command -v notify-send') return ran('', platform === 'linux' ? 0 : 1)
+    if (cmd === 'sh' && script?.includes('xprintidle')) return ran(idle === null ? '' : `${idle}\n`)
     if (cmd === 'mkdir') return ran()
     if (cmd === 'notify-send' || cmd === 'sh') {
       linux.push([...e.argv])
       return ran()
     }
+    if (e.init?.stdin === '# idle script') return ran(idle === null ? '' : `idle=${idle}\n`)
     toasts.push({ ...(e.init?.env ?? {}) })
     return ran('shown\n')
   })
@@ -53,6 +57,7 @@ function world(on: On, options: WorldOptions = {}) {
   })
   on('fs.read', (_$, e) => {
     if (e.path.endsWith('toast.ps1')) return { value: '# toast script' } as never
+    if (e.path.endsWith('idle.ps1')) return { value: '# idle script' } as never
     const held = files[e.path]
     if (held === undefined) throw new Error(`ENOENT ${e.path}`)
     return { value: held } as never
@@ -149,9 +154,10 @@ test('/cache-watch shows the time left, and `test` notifies now', async ($, on) 
   await request($)
   await clock.advance(15 * MINUTE)
   expect((await run('')).text).toContain('via desktop popup + phone')
+  expect((await run('')).text).toContain('only tried when you have been away from this machine for 2 min')
   expect((await run('')).text).toContain('About 45 min left; the warning comes in 35 min')
 
-  expect((await run('test')).text).toBe('Test sent: Windows: shown, phone: sent.')
+  expect((await run('test')).text).toContain('Test sent: Windows: shown, phone: sent.')
   expect(toasts).toHaveLength(1)
   expect(pushes).toHaveLength(1)
 })
@@ -172,7 +178,7 @@ test(
     ])
     expect(linux[1]?.[2]).toContain('canberra-gtk-play')
     expect(pushes).toHaveLength(1)
-    expect((await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text).toBe(
+    expect((await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text).toContain(
       'Test sent: Linux: shown, sound played, phone: sent.',
     )
   },
@@ -205,11 +211,48 @@ test('each firing is logged with the clock drift, and `log` reads the log back',
   expect(line).toContain('anchor=2026-10-07 12:00:00')
   expect(line).toContain('planned=2026-10-07 12:50:00')
   expect(line).toContain('drift=0s')
-  expect(line).toContain('left=10min warn=10 ttl=60 rearms=0')
+  expect(line).toContain('left=10min warn=10 ttl=60 rearms=0 idle=10min')
   expect(line).toContain('session=0c6aba9f cwd=recovery')
   expect(line).toContain('Windows: shown, phone: sent')
 
   const shown = (await $.command.run({ command: 'cache-watch', args: 'log' } as never)).text
   expect(shown).toContain('last 1 of 1')
   expect(shown).toContain('fire')
+})
+
+test('a real warning does not try the phone while you are sitting at the machine', async ($, on) => {
+  const { clock, toasts, pushes, log } = world(on, { idle: 30_000 })
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+
+  expect(toasts).toHaveLength(1)
+  expect(pushes).toHaveLength(0)
+  expect(log()).toContain('idle=30s')
+  expect(log()).toContain('phone: not tried (you touched this machine 30s ago)')
+})
+
+test('a machine that will not say how idle it is gets the push anyway', async ($, on) => {
+  const { clock, pushes, log } = world(on, { idle: null })
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+
+  expect(pushes).toHaveLength(1)
+  expect(log()).toContain('idle=unknown')
+})
+
+test('`test` pushes even though you are plainly at the keyboard, and says so', async ($, on) => {
+  const { pushes } = world(on, { idle: 5000 })
+  const said = (await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text
+  expect(pushes).toHaveLength(1)
+  expect(said).toContain('you last touched this machine 5s ago')
+  expect(said).toContain('a real warning skips the phone under 2 min')
+})
+
+test('on Linux the idle time comes from xprintidle or GNOME, and gates the phone the same way', async ($, on) => {
+  const { clock, pushes, log } = world(on, { platform: 'linux', idle: 45_000 })
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+
+  expect(pushes).toHaveLength(0)
+  expect(log()).toContain('idle=45s')
 })
