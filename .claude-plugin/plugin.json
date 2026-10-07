@@ -1,0 +1,45 @@
+{
+  "name": "cache-watch",
+  "version": "0.2.0",
+  "description": "Warns you (desktop popup, phone push, optional sound) a few minutes before this session's prompt cache goes cold",
+  "author": { "name": "Ev3nt1ne" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "warnMinutes": {
+      "type": "number",
+      "title": "Warn this many minutes before the cache goes cold",
+      "description": "Minutes left on the cache when the notification is sent",
+      "default": 10
+    },
+    "ttlMinutes": {
+      "type": "number",
+      "title": "Cache lifetime in minutes",
+      "description": "How long the prompt cache stays warm after the last request (60 for a 1-hour cache, 5 for a 5-minute one)",
+      "default": 60
+    },
+    "desktop": {
+      "type": "boolean",
+      "title": "Desktop notification",
+      "description": "Show a desktop notification that stays until dismissed (Windows through WSL, or notify-send on Linux)",
+      "default": true
+    },
+    "phone": {
+      "type": "boolean",
+      "title": "Phone push",
+      "description": "Try a push to the Claude app on your phone (needs Remote Control connected on this machine)",
+      "default": true
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "Sound",
+      "description": "Play the reminder sound with the notification",
+      "default": false
+    },
+    "log": {
+      "type": "boolean",
+      "title": "Keep a firing log",
+      "description": "Append one line per warning to ~/.cache/cache-watch/fire.log, with the clock's drift. Read it with `/cache-watch log`",
+      "default": true
+    }
+  }
+}

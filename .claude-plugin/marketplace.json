@@ -1,0 +1,12 @@
+{
+  "name": "cache-watch",
+  "description": "Cache Watch, a Claude Code mod that warns you before a session's prompt cache goes cold",
+  "owner": { "name": "Ev3nt1ne", "url": "https://github.com/Ev3nt1ne" },
+  "plugins": [
+    {
+      "name": "cache-watch",
+      "source": "./",
+      "description": "A desktop popup, phone push or sound a few minutes before the prompt cache lapses"
+    }
+  ]
+}
