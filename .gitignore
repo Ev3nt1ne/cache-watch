@@ -1,2 +1,7 @@
 # Written by Claude Code when it loads the mod
 .claude-plugin/types/
+
+# Personal notes live outside the repo (~/notes/cache-watch)
+/TODO.md
+/VERIFY.md
+/notes/

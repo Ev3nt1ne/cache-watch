@@ -66,9 +66,9 @@ function world(on: On, options: WorldOptions = {}) {
     files[e.path] = e.text
     return { value: undefined } as never
   })
-  on('session.cwd', () => ({ value: '/home/giova/recovery' }))
-  on('session.id', () => ({ value: '0c6aba9f-bc29-41a4-b06d-fa609c2ec4dd' }))
-  on('session.messages', () => ({ value: [{ role: 'user', text: 'check the flash log', toolUses: [] }] }) as never)
+  on('session.cwd', () => ({ value: '/home/test/api-server' }))
+  on('session.id', () => ({ value: '5f3a1c20-0000-4000-8000-000000000000' }))
+  on('session.messages', () => ({ value: [{ role: 'user', text: 'rename the config loader', toolUses: [] }] }) as never)
   on('turn.step', async function* (_$, e) {
     if (stepMs) await clock.sleep(stepMs)
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [] } as never
@@ -95,8 +95,8 @@ test('warns once, 10 minutes before a 60-minute cache goes cold, on Windows and 
 
   await clock.advance(1 * MINUTE + 1000)
   expect(toasts).toHaveLength(1)
-  expect(toasts[0]?.CW_TITLE).toBe('Claude cache cold in 10 min · recovery')
-  expect(toasts[0]?.CW_BODY).toContain('“check the flash log”')
+  expect(toasts[0]?.CW_TITLE).toBe('Claude cache cold in 10 min · api-server')
+  expect(toasts[0]?.CW_BODY).toContain('“rename the config loader”')
   expect(toasts[0]?.CW_SOUND).toBe('0')
   expect(pushes).toHaveLength(1)
   expect(pushes[0]).toContain('Claude cache cold in 10 min')
@@ -140,7 +140,7 @@ test(
     await request($)
     await clock.advance(3 * MINUTE + 1000)
     expect(toasts).toHaveLength(1)
-    expect(toasts[0]?.CW_TITLE).toBe('Claude cache cold in 2 min · recovery')
+    expect(toasts[0]?.CW_TITLE).toBe('Claude cache cold in 2 min · api-server')
     expect(toasts[0]?.CW_SOUND).toBe('1')
     expect(pushes).toHaveLength(0)
   },
@@ -174,7 +174,7 @@ test(
       'notify-send',
       '--app-name=Claude Code',
       '--urgency=critical',
-      'Claude cache cold in 10 min · recovery',
+      'Claude cache cold in 10 min · api-server',
     ])
     expect(linux[1]?.[2]).toContain('canberra-gtk-play')
     expect(pushes).toHaveLength(1)
@@ -212,7 +212,7 @@ test('each firing is logged with the clock drift, and `log` reads the log back',
   expect(line).toContain('planned=2026-10-07 12:50:00')
   expect(line).toContain('drift=0s')
   expect(line).toContain('left=10min warn=10 ttl=60 rearms=0 idle=10min')
-  expect(line).toContain('session=0c6aba9f cwd=recovery')
+  expect(line).toContain('session=5f3a1c20 cwd=api-server')
   expect(line).toContain('Windows: shown, phone: sent')
 
   const shown = (await $.command.run({ command: 'cache-watch', args: 'log' } as never)).text
