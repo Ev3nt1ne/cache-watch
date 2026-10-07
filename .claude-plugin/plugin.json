@@ -1,8 +1,23 @@
 {
   "name": "cache-watch",
+  "displayName": "Cache Watch",
   "version": "0.2.0",
   "description": "Warns you (desktop popup, phone push, optional sound) a few minutes before this session's prompt cache goes cold",
-  "author": { "name": "Ev3nt1ne" },
+  "author": {
+    "name": "Ev3nt1ne"
+  },
+  "homepage": "https://github.com/Ev3nt1ne/cache-watch",
+  "repository": "https://github.com/Ev3nt1ne/cache-watch",
+  "license": "MIT",
+  "keywords": [
+    "cache",
+    "prompt-cache",
+    "notification",
+    "toast",
+    "push",
+    "reminder",
+    "mod"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "warnMinutes": {

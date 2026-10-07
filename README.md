@@ -130,6 +130,13 @@ Push also needs `"agentPushNotifEnabled": true` in your settings; with it off th
 `config_off` and the mod says so. One trap: setting `CLAUDE_CODE_REMOTE` makes `transport` true
 unconditionally, so the tool reports `pushSent: true` with nothing on the other end. Don't.
 
+## What is missing
+
+[TODO.md](TODO.md) is the honest list: what is designed but unbuilt (including re-probing the
+machine instead of dropping the phone push), what has never been observed live, the test cases
+still to write, and what publishing steps are left. The two things that cannot be built at all are
+below.
+
 ## Not possible yet
 
 Two things this mod should do and cannot, both waiting on Claude Code rather than on the mod.
@@ -290,6 +297,7 @@ To try it once without changing settings: `claude --plugin-dir /path/to/cache-wa
 - `bin/idle.ps1` — how long since you last touched the Windows desktop
 - `tests/cache-watch.test.ts` — `claude plugin test .`
 - `types/index.d.ts` — the session value it keeps (`cache-watch.lastRequestAt`)
+- `TODO.md` — what is missing, untested, or impossible today
 
 ## Checks
 
