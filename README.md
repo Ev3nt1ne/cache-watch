@@ -26,7 +26,8 @@ with it.
 | Windows popup under **WSL2** (`bin/toast.ps1`) | **Works.** Seen live, and again on 2026-10-07 |
 | Windows popup **with sound** (`sound: true`) | **Fires**: PowerShell reports the toast shown with the reminder audio attached. Nobody has yet confirmed hearing the chime |
 | `/cache-watch` and `/cache-watch test` in the **VS Code** extension | **Work** |
-| `/cache-watch` and `/cache-watch test` in a **terminal** session | **Work.** Checked on 2026-10-07 with `claude --plugin-dir` in print mode |
+| `/cache-watch` and `/cache-watch test` in a **terminal** session | **Work.** Checked on 2026-10-07 in print mode, both with `claude --plugin-dir` and loaded from `settings.json` |
+| Firing log (`~/.cache/cache-watch/fire.log`, `/cache-watch log`) | **Works.** Written live on 2026-10-07, directory created on first use |
 | **Phone push** | **Never confirmed to arrive.** See *The phone leg* below: the tool reports it was skipped, and the mod now says so instead of claiming success |
 | Warning timing (fires once, at `ttlMinutes - warnMinutes`, subagent requests ignored, settings honoured, logged) | **Covered by the test suite** (9 tests, mocked clock, `claude plugin test .`) |
 | Warning timing in a **real** idle session | **Fires, but one real firing looked about 4 minutes early.** Unexplained; now instrumented. See *The timing* |

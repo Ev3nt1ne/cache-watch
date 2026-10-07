@@ -311,6 +311,12 @@ export const register: Register = (on, options) => {
         `Claude cache: test notification · ${folder}`,
         `${gist ? `“${gist}”. ` : ''}This is how the warning will look.`,
       )
+      // Logged like a firing, so the log's own plumbing is checked by the same command.
+      await appendLog(
+        $,
+        s,
+        `${iso(await $.clock.now())} test   session=${(await $.session.id()).slice(0, 8)} cwd=${folder} | ${done.join(', ')}`,
+      )
       return { text: `Test sent: ${done.join(', ')}.` }
     }
     if (arg === 'log') {
