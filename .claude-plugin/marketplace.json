@@ -6,7 +6,7 @@
     {
       "name": "cache-watch",
       "source": "./",
-      "description": "A desktop popup, phone push or sound a few minutes before the prompt cache lapses"
+      "description": "A desktop popup or sound a few minutes before the prompt cache lapses"
     }
   ]
 }

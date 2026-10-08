@@ -24,10 +24,18 @@ type WorldOptions = {
   stepMs?: number
   /** What the machine answers for "how long since the person last touched me", in ms; null for "it will not say". */
   idle?: number | null
+  /** The conversation the warning quotes from. */
+  messages?: { role: string; text: string }[]
 }
 
 function world(on: On, options: WorldOptions = {}) {
-  const { platform = 'wsl', push = { pushSent: true }, stepMs = 0, idle = 10 * MINUTE } = options
+  const {
+    platform = 'wsl',
+    push = { pushSent: true },
+    stepMs = 0,
+    idle = 10 * MINUTE,
+    messages = [{ role: 'user', text: 'rename the config loader' }],
+  } = options
   const clock = mock.clock(on, { now: START })
   mock.env(on, { HOME: '/home/test' })
   const toasts: Record<string, string>[] = []
@@ -68,7 +76,7 @@ function world(on: On, options: WorldOptions = {}) {
   })
   on('session.cwd', () => ({ value: '/home/test/api-server' }))
   on('session.id', () => ({ value: '5f3a1c20-0000-4000-8000-000000000000' }))
-  on('session.messages', () => ({ value: [{ role: 'user', text: 'rename the config loader', toolUses: [] }] }) as never)
+  on('session.messages', () => ({ value: messages.map(m => ({ ...m, toolUses: [] })) }) as never)
   on('turn.step', async function* (_$, e) {
     if (stepMs) await clock.sleep(stepMs)
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [] } as never
@@ -86,7 +94,7 @@ function request($: Engine, agentId?: string) {
   })()
 }
 
-test('warns once, 10 minutes before a 60-minute cache goes cold, on Windows and phone', async ($, on) => {
+test('warns once, 10 minutes before a 60-minute cache goes cold, on Windows and phone', { options: { phone: true } }, async ($, on) => {
   const { clock, toasts, pushes } = world(on)
   await request($)
 
@@ -146,7 +154,7 @@ test(
   },
 )
 
-test('/cache-watch shows the time left, and `test` notifies now', async ($, on) => {
+test('/cache-watch shows the time left, and `test` notifies now', { options: { phone: true } }, async ($, on) => {
   const { clock, toasts, pushes } = world(on)
   const run = (args: string) => $.command.run({ command: 'cache-watch', args } as never)
 
@@ -157,14 +165,17 @@ test('/cache-watch shows the time left, and `test` notifies now', async ($, on) 
   expect((await run('')).text).toContain('only tried when you have been away from this machine for 2 min')
   expect((await run('')).text).toContain('About 45 min left; the warning comes in 35 min')
 
-  expect((await run('test')).text).toContain('Test sent: Windows: shown, phone: sent.')
+  const tested = (await run('test')).text
+  expect(tested).toContain('Test sent: Windows: shown, phone: requested (no phone delivery on 2.1.293).')
+  // `pushSent` is the tool's own label on a local event, so it is never reported as a delivery.
+  expect(tested).not.toContain('phone: sent')
   expect(toasts).toHaveLength(1)
   expect(pushes).toHaveLength(1)
 })
 
 test(
   'on a Linux desktop the popup goes through notify-send, critical, with the sound when on',
-  { options: { sound: true } },
+  { options: { sound: true, phone: true } },
   async ($, on) => {
     const { clock, toasts, linux, pushes } = world(on, { platform: 'linux' })
     await request($)
@@ -179,27 +190,27 @@ test(
     expect(linux[1]?.[2]).toContain('canberra-gtk-play')
     expect(pushes).toHaveLength(1)
     expect((await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text).toContain(
-      'Test sent: Linux: shown, sound played, phone: sent.',
+      'Test sent: Linux: shown, sound played, phone: requested (no phone delivery on 2.1.293).',
     )
   },
 )
 
-test('a push that did not reach a phone is reported as what it was, not as sent', async ($, on) => {
+test('a push that did not reach a phone is reported as what it was, not as sent', { options: { phone: true } }, async ($, on) => {
   const { clock } = world(on, { push: { localSent: true, disabledReason: 'no_transport' } })
   await request($)
   await clock.advance(50 * MINUTE + 1000)
   const said = (await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text
   expect(said).toContain('phone: not sent (no phone reachable: Remote Control is not connected')
-  expect(said).not.toContain('phone: sent')
+  expect(said).not.toContain('phone: requested')
 })
 
-test('a push skipped because you are at the keyboard says so', async ($, on) => {
+test('a push skipped because you are at the keyboard says so', { options: { phone: true } }, async ($, on) => {
   world(on, { push: { localSent: true, disabledReason: 'user_present' } })
   const said = (await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text
   expect(said).toContain('phone: not sent (Claude Code took you to be at the keyboard)')
 })
 
-test('each firing is logged with the clock drift, and `log` reads the log back', async ($, on) => {
+test('each firing is logged with the clock drift, and `log` reads the log back', { options: { phone: true } }, async ($, on) => {
   const { clock, log } = world(on)
   expect((await $.command.run({ command: 'cache-watch', args: 'log' } as never)).text).toContain('No warning has fired yet')
 
@@ -213,14 +224,14 @@ test('each firing is logged with the clock drift, and `log` reads the log back',
   expect(line).toContain('drift=0s')
   expect(line).toContain('left=10min warn=10 ttl=60 rearms=0 idle=10min')
   expect(line).toContain('session=5f3a1c20 cwd=api-server')
-  expect(line).toContain('Windows: shown, phone: sent')
+  expect(line).toContain('Windows: shown, phone: requested (no phone delivery on 2.1.293)')
 
   const shown = (await $.command.run({ command: 'cache-watch', args: 'log' } as never)).text
   expect(shown).toContain('last 1 of 1')
   expect(shown).toContain('fire')
 })
 
-test('a real warning does not try the phone while you are sitting at the machine', async ($, on) => {
+test('a real warning does not try the phone while you are sitting at the machine', { options: { phone: true } }, async ($, on) => {
   const { clock, toasts, pushes, log } = world(on, { idle: 30_000 })
   await request($)
   await clock.advance(50 * MINUTE + 1000)
@@ -231,7 +242,7 @@ test('a real warning does not try the phone while you are sitting at the machine
   expect(log()).toContain('phone: not tried (you touched this machine 30s ago)')
 })
 
-test('a machine that will not say how idle it is gets the push anyway', async ($, on) => {
+test('a machine that will not say how idle it is gets the push anyway', { options: { phone: true } }, async ($, on) => {
   const { clock, pushes, log } = world(on, { idle: null })
   await request($)
   await clock.advance(50 * MINUTE + 1000)
@@ -240,7 +251,7 @@ test('a machine that will not say how idle it is gets the push anyway', async ($
   expect(log()).toContain('idle=unknown')
 })
 
-test('`test` pushes even though you are plainly at the keyboard, and says so', async ($, on) => {
+test('`test` pushes even though you are plainly at the keyboard, and says so', { options: { phone: true } }, async ($, on) => {
   const { pushes } = world(on, { idle: 5000 })
   const said = (await $.command.run({ command: 'cache-watch', args: 'test' } as never)).text
   expect(pushes).toHaveLength(1)
@@ -248,11 +259,51 @@ test('`test` pushes even though you are plainly at the keyboard, and says so', a
   expect(said).toContain('a real warning skips the phone under 2 min')
 })
 
-test('on Linux the idle time comes from xprintidle or GNOME, and gates the phone the same way', async ($, on) => {
+test('on Linux the idle time comes from xprintidle or GNOME, and gates the phone the same way', { options: { phone: true } }, async ($, on) => {
   const { clock, pushes, log } = world(on, { platform: 'linux', idle: 45_000 })
   await request($)
   await clock.advance(50 * MINUTE + 1000)
 
   expect(pushes).toHaveLength(0)
   expect(log()).toContain('idle=45s')
+})
+
+test('the quote skips the harness’s own user messages, so a popup never shows a tag', async ($, on) => {
+  const { clock, toasts } = world(on, {
+    messages: [
+      { role: 'user', text: 'rename the config loader' },
+      { role: 'assistant', text: 'done' },
+      {
+        role: 'user',
+        text: '<task-notification>\n<task-id>bm4s23lg3</task-id>\n<output-file>/tmp/x</output-file>\n</task-notification>',
+      },
+    ],
+  })
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+  expect(toasts[0]?.CW_BODY).toBe('“rename the config loader”. Send a message to keep it warm.')
+})
+
+test('a conversation with nothing but the harness’s messages warns without a quote', async ($, on) => {
+  const { clock, toasts } = world(on, {
+    messages: [
+      { role: 'user', text: '<command-name>/cache-watch</command-name><command-args></command-args>' },
+      { role: 'user', text: '<unknown-envelope-we-have-not-met>hi</unknown-envelope-we-have-not-met>' },
+    ],
+  })
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+  expect(toasts[0]?.CW_BODY).toBe('Send a message to keep it warm.')
+})
+
+test('the phone is off by default, so nothing asks for a push and the machine is not probed', async ($, on) => {
+  const { clock, toasts, pushes, log } = world(on)
+  expect((await $.command.run({ command: 'cache-watch', args: '' } as never)).text).not.toContain('phone')
+  await request($)
+  await clock.advance(50 * MINUTE + 1000)
+  expect(toasts).toHaveLength(1)
+  expect(pushes).toHaveLength(0)
+  // The idle probe exists to gate the phone, so with the phone off it does not run.
+  expect(log()).toContain('idle=unknown')
+  expect(log()).not.toContain('phone')
 })

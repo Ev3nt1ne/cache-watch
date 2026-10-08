@@ -47,7 +47,7 @@ function settingsFrom(options: PluginOptions): Settings {
     warnMinutes: num(options.warnMinutes, 10),
     ttlMinutes: num(options.ttlMinutes, 60),
     desktop: bool(options.desktop, true),
-    phone: bool(options.phone, true),
+    phone: bool(options.phone, false),
     awayMinutes: num(options.awayMinutes, 2),
     sound: bool(options.sound, false),
     log: bool(options.log, true),
@@ -103,11 +103,24 @@ async function folderOf($: $): Promise<string> {
   return cwd.split('/').filter(Boolean).at(-1) ?? cwd
 }
 
-/** The last thing you asked here, so a warning from one of several open sessions is recognisable. */
+/**
+ * Not every user-role message is one you typed. The harness posts its own as user messages —
+ * background-task notifications, slash-command wrappers, IDE selections, reminders — and they
+ * carry no flag that tells them apart, so they are recognised by the tag they open with.
+ * Quoting one put `<task-notification><task-id>…` in a live popup, which is how this was found.
+ */
+const ENVELOPE =
+  /^\s*<\/?(?:task-notification|command-name|command-message|command-args|local-command-std(?:out|err)|system-reminder|ide_selection|user-prompt-submit-hook)\b/
+
+/** The last thing you actually asked here, so a warning from one of several open sessions is recognisable. */
 async function gistOf($: $): Promise<string> {
-  const lastAsk = (await $.session.messages()).filter(m => m.role === 'user' && m.text.trim()).at(-1)
+  const lastAsk = (await $.session.messages())
+    .filter(m => m.role === 'user' && m.text.trim() && !ENVELOPE.test(m.text))
+    .at(-1)
   if (!lastAsk) return ''
   const text = lastAsk.text.trim().replace(/\s+/g, ' ')
+  // An envelope the list above does not know yet is still better dropped than quoted.
+  if (text.startsWith('<')) return ''
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
 }
 
@@ -177,7 +190,11 @@ async function linuxPopup($: $, s: Settings, title: string, body: string): Promi
   return snd.exitCode === 0 ? 'Linux: shown, sound played' : 'Linux: shown, sound failed (needs canberra-gtk-play or paplay)'
 }
 
-/** What `PushNotification` answers: it reaches a phone only through Remote Control, and skips itself when you are at the keyboard. */
+/**
+ * What `PushNotification` answers. On 2.1.293 it does not reach a phone at all: the whole
+ * tool is one local `os_notification` event, and `pushSent` is a label computed from a
+ * transport flag rather than anything the other end confirmed. See docs/01-phone-push.md.
+ */
 type CallResult = { deny?: string; isError?: boolean; text?: string; result?: unknown }
 type PushResult = {
   pushSent?: boolean
@@ -185,12 +202,12 @@ type PushResult = {
   disabledReason?: 'config_off' | 'user_present' | 'no_transport'
 }
 
-/** The phone leg, reported as the tool actually answered it: a non-error result is not the same as a push. */
+/** The phone leg, reported as the tool actually answered it: `pushSent` is a request, not a delivery. */
 function phoneReport(r: CallResult): string {
   if (r.deny) return `phone: refused (${r.deny})`
   if (r.isError) return `phone: failed (${String(r.text ?? '').slice(0, 120)})`
   const push = (r.result ?? null) as PushResult | null
-  if (push?.pushSent) return 'phone: sent'
+  if (push?.pushSent) return 'phone: requested (no phone delivery on 2.1.293)'
   switch (push?.disabledReason) {
     case 'no_transport':
       return 'phone: not sent (no phone reachable: Remote Control is not connected on this machine)'
@@ -335,7 +352,9 @@ function minutes(ms: number) {
 async function status($: $, s: Settings): Promise<string> {
   const anchor = await read($, lastRequestAt)
   const channels = [s.desktop && 'desktop popup', s.phone && 'phone', s.sound && 'sound'].filter(Boolean).join(' + ') || 'none'
-  const gate = s.phone ? ` The phone is only tried when you have been away from this machine for ${s.awayMinutes} min.` : ''
+  const gate = s.phone
+    ? ` The phone is only tried when you have been away from this machine for ${s.awayMinutes} min — and on 2.1.293 nothing delivers it (see README).`
+    : ''
   const conf = `Warns ${s.warnMinutes} min before a ${s.ttlMinutes}-min cache goes cold, via ${channels}.${gate}`
   if (anchor === null) return `${conf}\nNo request sent yet in this session: nothing to keep warm.`
   const left = anchor + s.ttlMinutes * MINUTE - (await $.clock.now())
