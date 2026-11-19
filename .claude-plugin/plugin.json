@@ -10,13 +10,16 @@
   "repository": "https://github.com/Ev3nt1ne/cache-watch",
   "license": "MIT",
   "keywords": [
-    "cache",
+    "claude-code",
+    "claude-code-mod",
+    "claude-code-plugin",
     "prompt-cache",
-    "notification",
-    "toast",
-    "push",
-    "reminder",
-    "mod"
+    "prompt-caching",
+    "notifications",
+    "wsl",
+    "token-usage",
+    "idle-detection",
+    "anthropic"
   ],
   "types": "./types/index.d.ts",
   "userConfig": {

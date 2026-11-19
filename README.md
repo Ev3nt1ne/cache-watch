@@ -1,12 +1,13 @@
 # Cache Watch
 
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that warns you a few
-minutes before a session's prompt cache goes cold, so you can send something and keep it warm.
+minutes before a session's prompt cache expires, so you can send something and keep it warm.
 
-Claude Code caches your conversation on the API side with a one-hour lifetime. While that entry
-is alive, your next message re-reads it cheaply; once it lapses, the whole conversation is sent
-and written again at the cache-write price. If you step away from a long session for an hour,
-you come back to a bill you could have avoided with one keystroke.
+On a Claude subscription, Claude Code caches your main conversation with a one-hour lifetime.
+While the cache is warm, your next message re-reads it cheaply. Step away for more than an hour
+and the first message back is a full cache miss: the whole conversation is sent and written to
+the cache again, at the cache-write price, and on a long session that takes a visible share of
+your usage limit. One message sent before the hour runs out would have kept it warm.
 
 Cache Watch sends one notification per idle stretch, `warnMinutes` (10 by default) before the
 cache's assumed end: a desktop popup that stays until you dismiss it, optionally a sound, and —
@@ -417,6 +418,18 @@ claude plugin validate .      # manifest, hooks, the calls and state it uses
 claude plugin test .          # 15 tests, mocked clock, popups, idle and push
 npx tsc -p .                  # after `npm i`, and after Claude Code has loaded the mod once
 ```
+
+## Other projects
+
+- [Airone Giallo](https://github.com/Ev3nt1ne/airone-giallo): skills and checks for running a long
+  project with Claude Code agents.
+- [specgraph](https://github.com/Ev3nt1ne/airone-giallo/tree/main/graph): Airone Giallo's
+  specification graph, usable alone; it keeps a project's decisions, requirements and assumptions
+  as a graph and computes which of them still hold.
+- [Embers](https://github.com/Ev3nt1ne/embers): the same problem for subagents, whose prompt cache lasts five
+  minutes.
+- [grammar-guard](https://github.com/Ev3nt1ne/grammar-guard): grammar and spell check for the
+  prompts you type or dictate into Claude Code.
 
 ## Licence
 
