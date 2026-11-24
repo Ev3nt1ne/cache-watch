@@ -1,7 +1,7 @@
 {
   "name": "cache-watch",
   "displayName": "Cache Watch",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Warns you (desktop popup, optional sound) a few minutes before this session's prompt cache goes cold",
   "author": {
     "name": "Ev3nt1ne"

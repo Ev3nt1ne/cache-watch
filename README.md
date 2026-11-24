@@ -419,17 +419,26 @@ claude plugin test .          # 15 tests, mocked clock, popups, idle and push
 npx tsc -p .                  # after `npm i`, and after Claude Code has loaded the mod once
 ```
 
-## Other projects
+## More Claude Code projects by Ev3nt1ne
 
-- [Airone Giallo](https://github.com/Ev3nt1ne/airone-giallo): skills and checks for running a long
-  project with Claude Code agents.
-- [specgraph](https://github.com/Ev3nt1ne/airone-giallo/tree/main/graph): Airone Giallo's
-  specification graph, usable alone; it keeps a project's decisions, requirements and assumptions
-  as a graph and computes which of them still hold.
-- [Embers](https://github.com/Ev3nt1ne/embers): the same problem for subagents, whose prompt cache lasts five
-  minutes.
-- [grammar-guard](https://github.com/Ev3nt1ne/grammar-guard): grammar and spell check for the
-  prompts you type or dictate into Claude Code.
+<table>
+  <tr>
+    <td width="66"><a href="https://github.com/Ev3nt1ne/airone-giallo"><img src="https://raw.githubusercontent.com/Ev3nt1ne/airone-giallo/main/brand/airone-standing-tight-circle-notte.svg" alt="Airone Giallo" width="40" height="40"></a></td>
+    <td><a href="https://github.com/Ev3nt1ne/airone-giallo"><b>Airone Giallo</b></a><br>Skills and checks for running a long project with Claude Code agents.</td>
+  </tr>
+  <tr>
+    <td width="66"><a href="https://github.com/Ev3nt1ne/airone-giallo/tree/main/graph"><img src="https://raw.githubusercontent.com/Ev3nt1ne/airone-giallo/main/brand/specgraph.svg" alt="SpecGraph" width="40" height="40"></a></td>
+    <td><a href="https://github.com/Ev3nt1ne/airone-giallo/tree/main/graph"><b>SpecGraph</b></a><br>Airone Giallo's specification graph, usable alone; it keeps a project's decisions, requirements and assumptions as a graph and computes which of them still hold.</td>
+  </tr>
+  <tr>
+    <td width="66"><a href="https://github.com/Ev3nt1ne/embers"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ev3nt1ne/embers/main/assets/embers-square-color-dark.svg"><img src="https://raw.githubusercontent.com/Ev3nt1ne/embers/main/assets/embers-square-color.svg" alt="Embers" width="40" height="40"></picture></a></td>
+    <td><a href="https://github.com/Ev3nt1ne/embers"><b>Embers</b></a><br>The same problem for subagents, whose prompt cache lasts five minutes.</td>
+  </tr>
+  <tr>
+    <td width="66"><a href="https://github.com/Ev3nt1ne/grammar-guard"><img src="https://raw.githubusercontent.com/Ev3nt1ne/grammar-guard/master/assets/grammar-guard-mark.svg" alt="Grammar Guard" width="40" height="40"></a></td>
+    <td><a href="https://github.com/Ev3nt1ne/grammar-guard"><b>Grammar Guard</b></a><br>Grammar and spell check for the prompts you type or dictate into Claude Code.</td>
+  </tr>
+</table>
 
 ## Licence
 

@@ -2,6 +2,19 @@
 
 Dates are the day the work was done. Versions follow the plugin manifest.
 
+## 0.3.1 — 2026-11-24
+
+### Added
+
+- The mark: a clock whose last ten minutes are a slice of their own, the window in which the
+  warning comes. `assets/cache-watch-mark.svg` in colour, with `-black` and `-white` one-colour
+  versions.
+
+### Documented
+
+- The README's closing list is now "More Claude Code projects by Ev3nt1ne": each project with its
+  mark, under the name its own README uses (SpecGraph, Grammar Guard).
+
 ## 0.3.0 — 2026-10-07
 
 The phone leg turned out not to be slow or fragile but impossible, and two of the three changes
